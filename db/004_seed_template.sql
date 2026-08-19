@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Consumer Insights Platform — template tenant
 --
--- GENERATED from supabase/seeds/*.sql by the transform in the rebuild.
+-- GENERATED from db/seeds/*.sql by the transform in the rebuild.
 -- Do not hand-edit; change the source seeds and regenerate.
 --
 -- Everything here lands in the single `template` tenant. Minting a demo

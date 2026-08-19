@@ -127,6 +127,7 @@ api/                    serverless functions
 └── public/             anonymous respondents: answer, submit, click, resubmission
 
 db/                     schema, policies, provisioning, seed  (run in order)
+├── seeds/              source data the template tenant is built from
 └── tests/              isolation and provisioning suites
 
 scripts/                test suites and staff account tools

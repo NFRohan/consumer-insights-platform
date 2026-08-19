@@ -104,5 +104,12 @@ Never take `tenant_id` from the client; resolve it from the verified JWT.
 
 ## Regenerating the template
 
-`004_seed_template.sql` is generated from `supabase/seeds/*.sql`. Edit
-the source seeds and regenerate rather than hand-editing it.
+`004_seed_template.sql` is generated from `seeds/*.sql` in this
+directory. Edit the source seeds and regenerate rather than hand-editing
+it.
+
+The seeds are the last thing left from the previous Supabase build --
+they were written for it, and they are kept because the template tenant
+is still built from them. Everything else that came with it (its
+migrations, which contradicted the files above, and its project config)
+has been removed.

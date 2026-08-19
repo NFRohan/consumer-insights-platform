@@ -131,7 +131,13 @@ reads `.env` directly.
 5. Revoke from `/staff`; the prospect's next request should say the
    access was withdrawn rather than silently signing them out.
 
-## Loose ends, not blockers
+## What is deliberately not here
 
-`netlify.toml` and `supabase/` are from the previous backend and are
-dead. They deploy harmlessly but will mislead the next reader.
+The previous backend's files are gone: its migrations contradicted `db/`,
+and its project config carried the old project's id in a public
+repository. Its seed data survives as `db/seeds/`, because the template
+tenant every demo is cloned from is still generated from it.
+
+`netlify.toml` is gone too -- it declared the same single-page-app
+fallback that the rewrite in `vercel.json` already provides, so it was a
+second answer to a settled question.
