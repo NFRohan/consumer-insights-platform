@@ -1,7 +1,11 @@
 # Deploying to Vercel + Neon
 
-Status: the database half is **done and verified**. What remains is
-connecting a Vercel project to it.
+**Live: https://consumer-insights-platform.vercel.app**
+Repo: https://github.com/NFRohan/consumer-insights-platform (public)
+
+Deployed and verified. Pushing to `main` redeploys; branches get preview
+URLs. The rest of this file is why it is set up the way it is, and what
+to check when something changes.
 
 ## What is already true
 
@@ -63,6 +67,12 @@ full transaction, against 247 ms before the preamble was batched.
 If the plan will not accept `sin1`, move the Neon project to match the
 function region instead. Do not leave them on separate continents.
 
+Confirmed live: `X-Vercel-Id: bom1::sin1::…` — the request enters at the
+Mumbai edge and the function runs in Singapore. Measured against the
+deployment, a login (one Neon transaction plus a scrypt verify) costs
+**~60 ms more than an endpoint that never opens a connection**, so the
+database is no longer the thing you wait for.
+
 ## Nine functions
 
 Vercel makes one function per `.js` under `api/`, except paths beginning
@@ -101,6 +111,15 @@ grant app_api to "<the role in DATABASE_URL>";
 `api/_lib/db.js` catches this specific failure and raises a named error
 rather than letting it surface as a bare 403, but the grant is still the
 fix.
+
+## Environment variables are set for Production and Preview only
+
+Not Development. Vercel stores Development values *decryptable* so
+`vercel env pull` can write them into `.env.local` — which would put the
+live database password in a readable field to serve a workflow this
+project does not use. `vite.config.js` reimplements Vercel's `api/`
+routing for `npm run dev`, so `vercel dev` is never needed and local work
+reads `.env` directly.
 
 ## After the first deploy, check
 
