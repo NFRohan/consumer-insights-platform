@@ -4,6 +4,8 @@ A survey and consumer-research platform by Intelligent Machines. Design a
 survey, publish it to a public link, collect responses from people with no
 account, and analyse the results.
 
+**Live:** <https://consumer-insights-platform.vercel.app>
+
 - **React + Vite** front end
 - **Serverless functions** under `api/`, deployed on Vercel
 - **Postgres** on Neon — no extensions required
@@ -20,9 +22,11 @@ with AND/OR branching, piping answers into later questions, question and option
 randomisation, and per-question translations. Questions can also be imported
 from Word or Excel.
 
-**Collecting** — a public link anyone can open without an account, an embed
-snippet, and optional respondent IDs so a returning respondent can be turned
-away when duplicate blocking is on.
+**Collecting** — publishing a survey hands over its public link there and then,
+and the builder keeps a copy button for as long as the survey is live. Anyone
+can open that link without an account. There is also an embed snippet, and
+optional respondent IDs so a returning respondent can be turned away when
+duplicate blocking is on.
 
 **Analysing** — a live dashboard, cross-tabs with filtering by respondent
 attributes or by how someone answered, keyword sentiment on open text,
@@ -61,10 +65,19 @@ does, so there is no second process to run.
 
 ## The database
 
-Everything is in `db/`, applied in order. It is plain Postgres — the files are
-re-runnable, so applying the set twice is a no-op rather than an error.
-`db/README.md` covers the run order, the isolation model and the one grant you
-need before deploying.
+Eight files in `db/`, applied in order. Plain Postgres — they are re-runnable,
+so applying the set twice is a no-op rather than an error.
+
+Prospects are kept apart by two independent mechanisms, so one mistake in
+future code cannot expose anything. Every child row carries its tenant and
+references its parent on both id and tenant together, so a question cannot
+point at another tenant's survey even if a query forgets to filter. On top of
+that, row-level security keys off a session context the API sets per request
+and the client never supplies. Anything unset reads as nothing rather than as
+everything.
+
+`db/README.md` covers the run order, that model in full, and the one grant to
+make before deploying.
 
 ## Staff console
 
@@ -108,13 +121,33 @@ npm test              # shared logic, and every view renders
 npm run test:api      # the database-backed suite
 ```
 
-`npm test` needs no database. It covers the pure logic and puts every view
-through a render pass — a build compiles code that throws on render, so the
-render pass is what catches a blank screen.
+`npm test` needs no database: 26 checks over the pure logic, and a render pass
+across all 13 views. The render pass earns its place because a build compiles
+code that throws the moment it renders — it is what catches a blank screen.
 
-The database suites live alongside them, plus two SQL suites in `db/tests/`
-covering tenant isolation and the provisioning lifecycle. Run them against a
-scratch database; `db/README.md` explains how.
+`npm run test:api` adds 77 checks against a real database, including the whole
+journey: build a survey, publish it, answer it as a stranger, submit, and read
+the result back.
+
+Two SQL suites in `db/tests/` cover tenant isolation (15) and the provisioning
+lifecycle (23). Run everything against a scratch database — `db/README.md`
+explains how. Worth knowing that the isolation guarantees mean little when run
+as a superuser, who bypasses the policies being tested; run them as the
+application's own role.
+
+## Deploying
+
+Vercel builds from `main` and redeploys on every push; branches get their own
+preview URL. Two environment variables are required — the **pooled** Neon
+connection string and a signing secret at least 32 characters long. Session
+length, pool size and the refresh interval all have defaults.
+
+The functions are pinned to the same region as the database. Left on the
+default they would sit on another continent, and a request costs three
+round trips, which is most of a second spent waiting on every action.
+
+`docs/DEPLOY.md` has the settings, the environment table and what to check
+after a deploy.
 
 ## Project layout
 
