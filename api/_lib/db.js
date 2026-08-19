@@ -47,50 +47,66 @@ export function getPool() {
 const ROLES = new Set(['admin', 'creator', 'viewer', 'anon']);
 const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
-/**
- * The session preamble, as ONE statement.
- *
- * It used to be three round trips (begin / set role / set_config), and a
- * transaction cost five in total. Against a database in another region
- * that is most of the response time, so the preamble is batched into a
- * single simple query.
- *
- * Batching means no bind parameters, so every value is validated to a
- * shape that cannot contain a quote before it is embedded: two UUIDs, a
- * role from a fixed set, and a boolean. Anything else is a bug in the
- * caller and is refused here rather than concatenated.
- */
-function preamble(ctx) {
+/** Validated, so the batched preamble can embed these without binding. */
+function clean(ctx) {
   const id = (v, what) => {
-    if (v === null || v === undefined || v === '') return '';
+    if (v === null || v === undefined || v === '') return null;
     if (!UUID.test(String(v))) throw new HttpError(400, `${what} is not a uuid`);
     return String(v);
   };
-  const tenant = id(ctx.tenantId, 'tenant id');
-  const user = id(ctx.userId, 'user id');
-  const role = ROLES.has(ctx.role) ? ctx.role : 'anon';
-  const staff = ctx.isStaff ? 'true' : 'false';
+  const iat = Number(ctx.issuedAt);
+  return {
+    tenant: id(ctx.tenantId, 'tenant id'),
+    user: id(ctx.userId, 'user id'),
+    role: ROLES.has(ctx.role) ? ctx.role : 'anon',
+    staff: ctx.isStaff ? 'true' : 'false',
+    iat: Number.isSafeInteger(iat) && iat > 0 ? String(iat) : null,
+  };
+}
 
+/**
+ * The session preamble, as ONE statement.
+ *
+ * Three round trips (begin / set role / set_config) used to cost most of
+ * a cross-region response, so they are batched into a single simple
+ * query. Batching means no bind parameters, so every value is validated
+ * to a shape that cannot contain a quote first: two UUIDs, a role from a
+ * fixed set, a boolean, and an integer.
+ *
+ * app.begin_request also decides whether this caller may proceed at all
+ * — the sandbox is still live, and the token predates no password change
+ * — because a check placed here cannot be forgotten by the next endpoint
+ * someone writes.
+ */
+function preamble(ctx) {
+  const c = clean(ctx);
+  const arg = (v) => (v === null ? 'null' : `'${v}'`);
   return `begin;
           set local role app_api;
-          select set_config('app.tenant_id', '${tenant}', true),
-                 set_config('app.user_id',   '${user}',   true),
-                 set_config('app.role',      '${role}',   true),
-                 set_config('app.is_staff',  '${staff}',  true);`;
+          select app.begin_request(${arg(c.tenant)}::uuid, ${arg(c.user)}::uuid,
+                                   '${c.role}', ${c.staff}, ${c.iat ?? 'null'}::bigint);`;
 }
 
 /**
  * Run `fn` with the given identity applied to the session.
  *
- * @param ctx  {{tenantId?, userId?, role?, isStaff?}}
+ * @param ctx  {{tenantId?, userId?, role?, isStaff?, issuedAt?}}
  * @param fn   (client) => Promise<T>   — receives a pg client
  */
 export async function withContext(ctx, fn) {
   const client = await getPool().connect();
-  let open = false;
+  // `begin` is the first statement of the batch below, so from the
+  // moment it is sent this connection may be inside a transaction --
+  // including when a later statement in the same batch raises. Marking
+  // it open only on success left an aborted transaction on a connection
+  // that then went back to the pool, where the next request inherited
+  // "current transaction is aborted, commands ignored".
+  let open = true;
+  let poisoned = false;
   try {
     // One round trip: open the transaction, drop to the unprivileged
-    // role for its lifetime, and set the context RLS reads.
+    // role for its lifetime, validate the caller, and set the context
+    // RLS reads.
     //
     // The role drop matters on its own. Without it a connection that
     // happens to be an owner or superuser bypasses RLS entirely and
@@ -98,9 +114,21 @@ export async function withContext(ctx, fn) {
     // non-owner; this makes the guarantee hold either way.
     try {
       await client.query(preamble(ctx));
-      open = true;
     } catch (err) {
       if (err instanceof HttpError) throw err;
+
+      // A refusal from app.begin_request is an answer, not a fault: the
+      // sandbox lapsed, was withdrawn, or the password has since
+      // changed. Carry the reason out as a 403 the client can show.
+      if (err?.code === 'P0001' && err?.hint) {
+        throw new HttpError(403, {
+          expired: 'this evaluation access has expired',
+          revoked: 'this evaluation access has been withdrawn',
+          missing: 'this evaluation no longer exists',
+          password_changed: 'your password was changed — please sign in again',
+        }[err.hint] || 'access is no longer valid');
+      }
+
       // A failed role switch is a deploy mistake, not a permission
       // decision. Postgres raises 42501, which the HTTP layer would
       // otherwise render as a bland 403 on every single request with
@@ -119,11 +147,18 @@ export async function withContext(ctx, fn) {
     return out;
   } catch (err) {
     if (open) {
-      try { await client.query('rollback'); } catch { /* connection already gone */ }
+      try {
+        await client.query('rollback');
+      } catch {
+        // The connection cannot be cleaned up, so it must not be reused.
+        poisoned = true;
+      }
     }
     throw err;
   } finally {
-    client.release();
+    // Passing a truthy argument destroys the connection instead of
+    // returning it to the pool.
+    client.release(poisoned);
   }
 }
 

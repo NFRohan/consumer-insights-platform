@@ -15,6 +15,14 @@ import { fmtDate, fmtWhen, relativeDays, daysUntil } from '../lib/relativeTime.j
 
 const STATUS_TONE = { active: 'positive', expired: 'warn', revoked: 'danger' };
 
+const AUDIT_TONE = {
+  'tenant.mint': 'positive',
+  'tenant.extend': 'positive',
+  'tenant.revoke': 'danger',
+  'tenant.purge': 'warn',
+  'tenant.password_reset': 'warn',
+};
+
 // ---------------------------------------------------------------------
 // sign-in, for staff only
 // ---------------------------------------------------------------------
@@ -76,7 +84,7 @@ function StaffSignIn() {
 // ---------------------------------------------------------------------
 // the one-time credential reveal
 // ---------------------------------------------------------------------
-function CredentialCard({ credential, tenant, onDone }) {
+function CredentialCard({ credential, tenant, onDone, reset, tenantStatus }) {
   const [copied, setCopied] = useState(null);
 
   const copy = async (label, text) => {
@@ -93,11 +101,22 @@ function CredentialCard({ credential, tenant, onDone }) {
 
   return (
     <Card
-      title="Credentials issued"
-      sub="Copy these now — the password is stored only as a hash and cannot be shown again."
+      title={reset ? 'New password issued' : 'Credentials issued'}
+      sub={reset
+        ? 'The previous password stopped working the moment this was issued, and any session opened with it has ended. Copy this now — it is stored only as a hash.'
+        : 'Copy these now — the password is stored only as a hash and cannot be shown again.'}
       action={<Btn size="sm" variant="ghost" onClick={onDone}>Done</Btn>}
     >
       <div className="col gap-3">
+        {/* A reset does not reinstate a sandbox. Handing over a
+            credential that cannot sign in would waste a support round
+            trip, so say so here rather than let them find out. */}
+        {reset && tenantStatus && tenantStatus !== 'active' && (
+          <div className="alert" data-tone="warn">
+            <strong>This evaluation is {tenantStatus}.</strong> The new password is
+            set, but it will not sign in until you extend the access above.
+          </div>
+        )}
         <div className="row gap-3" style={{ flexWrap: 'wrap' }}>
           {[['Username', credential.username], ['Password', credential.password]].map(([label, value]) => (
             <div key={label} style={{ minWidth: 220, flex: 1 }}>
@@ -248,8 +267,13 @@ function Portal() {
 
   const act = async (body) => {
     try {
-      await authFetch('/api/admin/actions', { method: 'POST', body });
+      const out = await authFetch('/api/admin/actions', { method: 'POST', body });
       setConfirming(null);
+      // A reset hands back a credential that exists nowhere else; show it
+      // through the same card minting uses.
+      if (out?.credential) {
+        setIssued({ credential: out.credential, reset: true, tenantStatus: out.tenantStatus });
+      }
       await load();
     } catch (err) {
       setError(err.message);
@@ -293,6 +317,8 @@ function Portal() {
           <CredentialCard
             credential={issued.credential}
             tenant={issued.tenant}
+            reset={issued.reset}
+            tenantStatus={issued.tenantStatus}
             onDone={() => { setIssued(null); load(); }}
           />
         </div>
@@ -345,27 +371,52 @@ function Portal() {
                         : <span className="mute">never signed in</span>}
                     </td>
                     <td style={{ textAlign: 'right' }}>
+                      {/* Confirmations are keyed by tenant AND action: one
+                          shared "which row" flag would arm both buttons at
+                          once, and these two do very different things. */}
                       <div className="row gap-2" style={{ justifyContent: 'flex-end' }}>
-                        <Btn size="sm" variant="ghost"
-                             onClick={() => act({ action: 'extend', tenantId: t.id, days: 7 })}>
-                          +7 days
-                        </Btn>
-                        {t.status !== 'revoked' && (
-                          confirming === t.id ? (
-                            <>
-                              <Btn size="sm" variant="danger"
-                                   onClick={() => act({ action: 'revoke', tenantId: t.id })}>
-                                Confirm
-                              </Btn>
-                              <Btn size="sm" variant="ghost" onClick={() => setConfirming(null)}>
-                                Cancel
-                              </Btn>
-                            </>
-                          ) : (
-                            <Btn size="sm" variant="ghost" onClick={() => setConfirming(t.id)}>
+                        {confirming === `${t.id}:reset` ? (
+                          <>
+                            <span className="small mute">
+                              Ends their current session too.
+                            </span>
+                            <Btn size="sm" variant="danger"
+                                 onClick={() => act({ action: 'reset-password', tenantId: t.id })}>
+                              Issue new password
+                            </Btn>
+                            <Btn size="sm" variant="ghost" onClick={() => setConfirming(null)}>
+                              Cancel
+                            </Btn>
+                          </>
+                        ) : confirming === `${t.id}:revoke` ? (
+                          <>
+                            <span className="small mute">Cut off access now?</span>
+                            <Btn size="sm" variant="danger"
+                                 onClick={() => act({ action: 'revoke', tenantId: t.id })}>
                               Revoke
                             </Btn>
-                          )
+                            <Btn size="sm" variant="ghost" onClick={() => setConfirming(null)}>
+                              Cancel
+                            </Btn>
+                          </>
+                        ) : (
+                          <>
+                            <Btn size="sm" variant="ghost"
+                                 onClick={() => act({ action: 'extend', tenantId: t.id, days: 7 })}>
+                              +7 days
+                            </Btn>
+                            <Btn size="sm" variant="ghost"
+                                 title="They lost it. Nothing can be recovered — this issues a replacement."
+                                 onClick={() => setConfirming(`${t.id}:reset`)}>
+                              Reset password
+                            </Btn>
+                            {t.status !== 'revoked' && (
+                              <Btn size="sm" variant="ghost"
+                                   onClick={() => setConfirming(`${t.id}:revoke`)}>
+                                Revoke
+                              </Btn>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>
@@ -400,12 +451,8 @@ function Portal() {
                 <tr key={e.id}>
                   <td className="small mono">{fmtWhen(e.ts)}</td>
                   <td>
-                    <Chip tone={
-                      e.kind === 'tenant.mint' ? 'positive'
-                        : e.kind === 'tenant.revoke' ? 'danger'
-                          : e.kind === 'tenant.purge' ? 'warn' : undefined
-                    }>
-                      {e.kind.replace('tenant.', '')}
+                    <Chip tone={AUDIT_TONE[e.kind]}>
+                      {e.kind.replace('tenant.', '').replace(/_/g, ' ')}
                     </Chip>
                   </td>
                   <td className="mono small">{e.tenant_ref || '—'}</td>

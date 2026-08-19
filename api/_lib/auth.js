@@ -100,6 +100,9 @@ export async function contextFromRequest(req) {
       userId: p.sub || null,
       role: p.role || 'viewer',
       isStaff: !!p.staff,
+      // When this session began. A password reset makes every token
+      // issued before it stale, which is what ends the old sessions.
+      issuedAt: p.iat || null,
     };
   } catch {
     throw new HttpError(401, 'invalid or expired session');

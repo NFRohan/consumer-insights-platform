@@ -1,5 +1,9 @@
 // POST /api/admin/actions   { action, tenantId, days? }
 //
+// reset  — the prospect lost their credential. Nothing is recoverable:
+//          the password is a scrypt hash, deliberately. A new one is
+//          issued and shown once, and every session opened with the old
+//          one stops working.
 // revoke — cuts access now, keeps the data so it can be inspected or
 //          reinstated. This is the reversible one.
 // extend — pushes the expiry out and clears any revocation.
@@ -7,7 +11,7 @@
 //          Irreversible, so it is never implicit: staff ask for it.
 
 import { queryAsStaff } from '../_lib/db.js';
-import { contextFromRequest, requireStaff } from '../_lib/auth.js';
+import { contextFromRequest, requireStaff, hashPassword, generatePassword } from '../_lib/auth.js';
 import { handler, json, methodGuard, readJson, HttpError } from '../_lib/http.js';
 
 export default handler(async (req, res) => {
@@ -33,6 +37,26 @@ export default handler(async (req, res) => {
         [tenantId, n, ctx.userId],
       );
       json(res, 200, { ok: true, expires_at: rows[0].expires_at });
+      return;
+    }
+
+    case 'reset-password': {
+      if (!tenantId) throw new HttpError(400, 'tenantId is required');
+      const password = generatePassword();
+      const rows = await queryAsStaff(
+        `select * from app.reset_demo_password($1, $2, $3)`,
+        [tenantId, await hashPassword(password), ctx.userId],
+      );
+      const r = rows[0];
+      json(res, 200, {
+        ok: true,
+        // Shown once. Only the hash is stored, so it cannot be recovered
+        // any more than the previous one could.
+        credential: { username: r.username, password },
+        // A reset does not reinstate a lapsed sandbox, so the console
+        // needs to know whether this credential will actually work.
+        tenantStatus: r.tenant_status,
+      });
       return;
     }
 

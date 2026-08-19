@@ -274,11 +274,30 @@ console.log('\nclick tracking');
   assert.equal(rows.length, 2);
   ok('a tenant sees its own click events');
 
+  // This used to assert an empty result: RLS filtered a context naming a
+  // tenant that does not exist. Since 007 the request is refused before
+  // any query runs, which is the stronger answer -- a token naming a
+  // purged sandbox is not a caller who should see nothing, it is a
+  // caller who should be turned away.
+  await rejects('a context naming a tenant that does not exist is refused',
+    () => withContext(
+      { tenantId: '00000000-0000-0000-0000-0000000000ff', userId: tuser.id, role: 'admin' },
+      async (c) => (await c.query('select * from public.distribution_clicks')).rows),
+    /no longer exists/);
+
+  // ...and a real second tenant still simply sees nothing of the first.
+  const [{ tenant_id: other }] = await queryAsStaff(
+    `select * from app.provision_demo('Click Test Neighbour', 'click.neighbour', $1, interval '3 days')`,
+    [await hashPassword('pw')],
+  );
+  const [ouser] = await queryAsStaff(
+    `select id, role from public.app_users where tenant_id = $1`, [other]);
   const foreign = await withContext(
-    { tenantId: '00000000-0000-0000-0000-0000000000ff', userId: tuser.id, role: 'admin' },
+    { tenantId: other, userId: ouser.id, role: ouser.role },
     async (c) => (await c.query('select * from public.distribution_clicks')).rows);
   assert.equal(foreign.length, 0);
   ok('another tenant sees none of them');
+  await queryAsStaff(`delete from public.tenants where id = $1`, [other]);
 
   await queryAsStaff(`delete from public.tenants where id = $1`, [tid]);
 }
@@ -400,6 +419,134 @@ console.log('\nrow ceiling');
   // incomplete" -- an exactly-full page cannot be told from a cut one.
   assert.equal(build({ table: 'answers', op: 'insert', rows: [{ value: 1 }] }).limit, undefined);
   ok('writes report no limit, so they are never flagged as truncated');
+}
+
+// =====================================================================
+console.log('\nlosing a credential, and ending a session');
+//
+// A JWT used to be believed for its whole 12-hour life. /api/auth/me
+// re-checked the tenant but /api/data did not, so revoking a sandbox
+// left an open tab reading and exporting everything until the token
+// lapsed. These cases pin the request-path check that fixed it, and the
+// password reset that depends on it.
+// =====================================================================
+{
+  await queryAsStaff(`delete from public.tenants where name like 'Reset Test%'`);
+  const [{ tenant_id: tid }] = await queryAsStaff(
+    `select * from app.provision_demo('Reset Test Co', 'reset.eval', $1, interval '3 days')`,
+    [await hashPassword('original-password')],
+  );
+  const [user] = await queryAsStaff(
+    `select id, role, username from public.app_users where tenant_id = $1`, [tid]);
+  // Each run gets its own slug, which is how the audit assertion below
+  // stays exact: staff_audit is append-only even for staff (it has read
+  // and insert policies and deliberately no delete), so entries from
+  // previous runs are still there and must not be counted.
+  const [{ slug }] = await queryAsStaff(
+    `select slug from public.tenants where id = $1`, [tid]);
+
+  const now = () => Math.floor(Date.now() / 1000);
+
+  // Pin the timeline rather than race the clock. begin_request allows a
+  // second of slack for skew between the API host and the database, so a
+  // token minted in the same instant as a reset is deliberately still
+  // honoured -- which would make a test built on `now()` decide its own
+  // outcome on sub-second timing. Backdating the account's last password
+  // change makes "before" and "after" unambiguous.
+  await queryAsStaff(
+    `update public.app_users set password_changed_at = now() - interval '1 hour'
+      where id = $1`, [user.id]);
+
+  // An open tab from half an hour ago: after that change, before any reset.
+  const ctx = { tenantId: tid, userId: user.id, role: user.role, issuedAt: now() - 1800 };
+  const count = (c) => withContext(c,
+    async (cl) => Number((await cl.query('select count(*) n from public.surveys')).rows[0].n));
+
+  assert.ok(await count(ctx) > 0);
+  ok('a live sandbox serves its own data');
+
+  // ---------------------------------------------------------------
+  // the reset itself
+  // ---------------------------------------------------------------
+  const [issued] = await queryAsStaff(
+    `select * from app.reset_demo_password($1, $2, $3)`,
+    [tid, await hashPassword('replacement-password'), null]);
+  assert.equal(issued.username, user.username);
+  assert.equal(issued.tenant_status, 'active');
+  ok('reset returns the username staff issued, and the sandbox status');
+
+  const [stored] = await queryAsStaff(
+    `select password_hash, password_changed_at from public.app_users where id = $1`, [user.id]);
+  assert.equal(await verifyPassword('replacement-password', stored.password_hash), true);
+  assert.equal(await verifyPassword('original-password', stored.password_hash), false);
+  ok('the new password verifies and the old one no longer does');
+
+  // ---------------------------------------------------------------
+  // ...and the session opened with the old one stops working
+  // ---------------------------------------------------------------
+  await rejects('a session that predates the reset is refused',
+    () => count(ctx), /password was changed/);
+
+  const fresh = { ...ctx, issuedAt: now() + 5 };
+  assert.ok(await count(fresh) > 0);
+  ok('a session started after the reset works');
+
+  // A token with no issued-at cannot be judged stale; it must still be
+  // subject to every other check rather than sailing through.
+  assert.ok(await count({ ...ctx, issuedAt: null }) > 0);
+  ok('a token carrying no issued-at is not treated as stale');
+
+  // ---------------------------------------------------------------
+  // revocation now reaches the data path, not just /me
+  // ---------------------------------------------------------------
+  await queryAsStaff(`select app.revoke_demo($1, null)`, [tid]);
+  await rejects('a revoked sandbox serves no data at all',
+    () => count(fresh), /withdrawn/);
+
+  // Resetting the password is not a decision to restore access.
+  const [afterRevoke] = await queryAsStaff(
+    `select * from app.reset_demo_password($1, $2, $3)`,
+    [tid, await hashPassword('another-one'), null]);
+  assert.equal(afterRevoke.tenant_status, 'revoked');
+  ok('resetting a revoked sandbox reports it is still revoked');
+  await rejects('...and does not quietly reinstate it',
+    () => count({ ...ctx, issuedAt: now() + 5 }), /withdrawn/);
+
+  // extend is what reinstates
+  await queryAsStaff(`select app.extend_demo($1, interval '3 days', null)`, [tid]);
+  assert.ok(await count({ ...ctx, issuedAt: now() + 5 }) > 0);
+  ok('extending restores access');
+
+  // ---------------------------------------------------------------
+  // expiry, same path
+  // ---------------------------------------------------------------
+  await queryAsStaff(
+    `update public.tenants set expires_at = now() - interval '1 hour' where id = $1`, [tid]);
+  await rejects('an expired sandbox serves no data either',
+    () => count({ ...ctx, issuedAt: now() + 5 }), /expired/);
+
+  // ---------------------------------------------------------------
+  // who may reset
+  // ---------------------------------------------------------------
+  await rejects('a tenant member cannot reset their own tenant',
+    () => withContext({ tenantId: tid, userId: user.id, role: 'admin' },
+      async (c) => c.query(`select * from app.reset_demo_password($1, $2, null)`,
+                           [tid, 'x'])),
+    /expired|staff/);
+
+  await rejects('resetting an unknown tenant fails',
+    () => queryAsStaff(`select * from app.reset_demo_password($1, $2, null)`,
+                       ['00000000-0000-0000-0000-0000000000ff', 'x']),
+    /no demo tenant/);
+
+  const trail = await queryAsStaff(
+    `select kind, detail from public.staff_audit
+      where tenant_ref = $1 and kind = 'tenant.password_reset'`, [slug]);
+  assert.equal(trail.length, 2);
+  assert.match(trail[0].detail, /New password issued for/);
+  ok('every reset is on the staff record, naming the account');
+
+  await queryAsStaff(`delete from public.tenants where id = $1`, [tid]);
 }
 
 await getPool().end();
