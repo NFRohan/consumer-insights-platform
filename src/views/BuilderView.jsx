@@ -9,6 +9,7 @@ import {
   PipingModal,
   LanguageModal,
   RandomizeModal,
+  PublishedModal,
 } from './builder/BuilderModals.jsx';
 
 const QTYPE = Object.fromEntries(QUESTION_TYPES.map((q) => [q.id, q]));
@@ -62,7 +63,24 @@ export default function BuilderView({ ctx }) {
   const dragIndexRef = useRef(null);
 
   // Modals
-  const [modal, setModal] = useState(null); // 'import' | 'logic' | 'pipe' | 'lang' | 'rand'
+  const [modal, setModal] = useState(null); // 'import' | 'logic' | 'pipe' | 'lang' | 'rand' | 'published'
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  // The address a respondent opens. Same shape the Distribute screen
+  // uses, and the same one the ?d= tracked links are built from.
+  const publicLink = surveyId ? `${window.location.origin}/r/${surveyId}` : '';
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(publicLink);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1800);
+    } catch {
+      // Refused clipboard: fall back to the modal, where the link is
+      // selectable text rather than a promise that it was copied.
+      setModal('published');
+    }
+  };
 
   const surveyId = ctx.activeSurveyId;
 
@@ -150,6 +168,10 @@ export default function BuilderView({ ctx }) {
       ref: surveyId,
       detail: `"${survey.name}" → ${next}`,
     });
+    // Publishing is the moment the link starts mattering, so hand it over
+    // instead of only swapping the button's label. Unpublishing needs no
+    // such screen -- there is nothing to do next.
+    if (next === 'live') setModal('published');
   };
 
   if (!surveyId) {
@@ -219,6 +241,12 @@ export default function BuilderView({ ctx }) {
           <Btn icon="eye" onClick={() => window.open(`/r/${surveyId}?preview=1`, '_blank')}>
             Preview
           </Btn>
+          {survey.status === 'live' && (
+            <Btn icon={linkCopied ? 'check' : 'copy'} onClick={copyLink}
+                 title={publicLink}>
+              {linkCopied ? 'Copied' : 'Copy link'}
+            </Btn>
+          )}
           <Btn variant="primary" icon={survey.status === 'live' ? 'x' : 'send'} onClick={togglePublish}>
             {survey.status === 'live' ? 'Unpublish' : 'Publish'}
           </Btn>
@@ -423,6 +451,14 @@ export default function BuilderView({ ctx }) {
       </div>
 
       {/* ===== Modals ===== */}
+      {modal === 'published' && (
+        <PublishedModal
+          link={publicLink}
+          questionCount={questions.length}
+          onClose={() => setModal(null)}
+          onDistribute={() => { setModal(null); ctx.goDistribute?.(surveyId); }}
+        />
+      )}
       {modal === 'import' && (
         <ImportModal
           onClose={() => setModal(null)}

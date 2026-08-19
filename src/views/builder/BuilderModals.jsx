@@ -826,3 +826,78 @@ export function RandomizeModal({ onClose, questions, initial = {}, onSave }) {
     </Modal>
   );
 }
+
+// =====================================================================
+// PublishedModal — what happens the moment a survey goes live.
+//
+// Publishing used to change the button from "Publish" to "Unpublish" and
+// nothing else, which left the one thing you actually need next — the
+// link — nowhere on the screen.
+// =====================================================================
+export function PublishedModal({ link, questionCount, onClose, onDistribute }) {
+  const [copied, setCopied] = useState(null);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied('done');
+      setTimeout(() => setCopied(null), 1800);
+    } catch {
+      // Clipboard access needs a secure context and permission; if it is
+      // refused, say so rather than silently appearing to have copied.
+      setCopied('unavailable');
+    }
+  };
+
+  return (
+    <Modal title="Your survey is live" onClose={onClose} width={560}>
+      <div className="col gap-3">
+        <div className="row gap-2" style={{ alignItems: 'center' }}>
+          <Chip tone="positive" pulse>Live</Chip>
+          <span className="small mute">
+            Anyone with this link can respond — no account needed.
+          </span>
+        </div>
+
+        {questionCount === 0 && (
+          <div className="alert" data-tone="warn">
+            <strong>There are no questions yet.</strong> The link works, but
+            anyone opening it will find an empty survey.
+          </div>
+        )}
+
+        <div>
+          <label className="label">Public link</label>
+          <div className="row gap-2">
+            <input className="input mono" readOnly value={link}
+                   onFocus={(e) => e.target.select()} style={{ flex: 1 }} />
+            <Btn variant="primary" icon={copied === 'done' ? 'check' : 'copy'} onClick={copy}>
+              {copied === 'done' ? 'Copied' : 'Copy'}
+            </Btn>
+          </div>
+          {copied === 'unavailable' && (
+            <div className="small mute" style={{ marginTop: 6 }}>
+              Your browser blocked the clipboard — select the link above and copy it.
+            </div>
+          )}
+        </div>
+
+        <div className="row gap-2" style={{ flexWrap: 'wrap' }}>
+          <Btn icon="eye" onClick={() => window.open(link, '_blank', 'noopener')}>
+            Open it
+          </Btn>
+          <Btn icon="send" onClick={onDistribute}>
+            Send it to people
+          </Btn>
+          <div className="grow" />
+          <Btn variant="ghost" onClick={onClose}>Done</Btn>
+        </div>
+
+        <div className="small mute">
+          You can copy this link again any time from the Copy link button in
+          the builder, or from the Distribute screen.
+        </div>
+      </div>
+    </Modal>
+  );
+}
