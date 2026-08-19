@@ -1082,11 +1082,29 @@ body[data-density='compact'] .view {
   height: 100%;
   overflow-y: auto;
 }
+/* Every tile the same size, whatever its label.
+
+   `width: 100%` is doing the real work: this is a <button>, and a
+   button's `width: auto` is shrink-to-fit, so `display: flex` made it a
+   flex CONTAINER without making it fill the column. Each tile sized
+   itself to its own text, which is why "Dropdown" and "Hotspot / Click
+   Map" were different widths.
+
+   The height is pinned too. At 220px this column cannot fit the longest
+   labels on one line, so those wrap -- and a tile that is two lines tall
+   next to fifteen that are one is the same raggedness in the other
+   direction. line-height 1.2 with 7px of vertical padding makes two
+   lines exactly 44px, which is also the floor, so one-line and two-line
+   tiles come out identical. */
 .q-palette-item {
   display: flex;
+  width: 100%;
+  min-height: 44px;
   align-items: center;
+  text-align: left;      /* buttons centre their text by default */
   gap: 10px;
-  padding: 9px 10px;
+  padding: 7px 10px;
+  line-height: 1.2;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface);
