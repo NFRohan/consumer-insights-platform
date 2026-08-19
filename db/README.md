@@ -13,6 +13,7 @@ built into Postgres 13+, and Neon runs 14–17).
 005_distribution_clicks.sql  tracked-link opens; makes `delivered` unknown
 006_forgery_guards.sql       audit actor stamped from the session; click ceiling
 007_session_validity.sql     expiry/revocation/reset end a session; password reset
+008_submit_response.sql      lets a respondent actually finish a survey
 ```
 
 All files are re-runnable — applying them twice is a no-op, not an error.
@@ -46,7 +47,7 @@ Against a throwaway Postgres:
 docker run -d --name cip-test -e POSTGRES_PASSWORD=test -p 55433:5432 postgres:17
 
 for f in 001_schema 002_rls 003_provisioning 004_seed_template \
-         005_distribution_clicks 006_forgery_guards 007_session_validity; do
+         005_distribution_clicks 006_forgery_guards 007_session_validity 008_submit_response; do
   docker cp $f.sql cip-test:/tmp/
   docker exec cip-test psql -U postgres -q -v ON_ERROR_STOP=1 -f /tmp/$f.sql
 done

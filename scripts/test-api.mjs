@@ -11,7 +11,8 @@ import { readFileSync, unlinkSync } from 'node:fs';
 import { build } from '../api/_lib/query.js';
 import { HttpError } from '../api/_lib/tables.js';
 import { hashPassword, verifyPassword, signToken, verifyToken, generatePassword } from '../api/_lib/auth.js';
-import { withContext, queryAsStaff, getPool } from '../api/_lib/db.js';
+import { randomUUID } from 'node:crypto';
+import { withContext, queryAsStaff, queryElevated, getPool } from '../api/_lib/db.js';
 import { exportSurveyXlsx } from '../src/lib/exportXlsx.js';
 import * as XLSX from 'xlsx';
 
@@ -545,6 +546,126 @@ console.log('\nlosing a credential, and ending a session');
   assert.equal(trail.length, 2);
   assert.match(trail[0].detail, /New password issued for/);
   ok('every reset is on the staff record, naming the account');
+
+  await queryAsStaff(`delete from public.tenants where id = $1`, [tid]);
+}
+
+// =====================================================================
+console.log('\nthe whole loop: build, publish, answer, finish');
+//
+// Every other test here checked a piece. None of them asked the only
+// question that matters for a demo: can someone make a survey, can a
+// stranger fill it in, and does the result come back? Submitting was
+// broken for as long as this rebuild has existed and no test noticed,
+// because an UPDATE that matches zero rows is a success.
+// =====================================================================
+{
+  await queryAsStaff(`delete from public.tenants where name like 'Loop Test%'`);
+  const [{ tenant_id: tid }] = await queryAsStaff(
+    `select * from app.provision_demo('Loop Test Co', 'loop.eval', $1, interval '1 day')`,
+    [await hashPassword('pw')]);
+  const [owner] = await queryAsStaff(
+    `select id, role from public.app_users where tenant_id = $1`, [tid]);
+
+  const asOwner = { tenantId: tid, userId: owner.id, role: owner.role };
+  const asAnon = { tenantId: tid, userId: null, role: 'anon', isStaff: false };
+
+  // build --------------------------------------------------------
+  const [survey] = await withContext(asOwner, async (c) => (await c.query(
+    `insert into public.surveys (name, status, owner_id, languages, default_language)
+     values ('Loop Check', 'draft', $1, array['en'], 'en') returning id`, [owner.id])).rows);
+  const qs = await withContext(asOwner, async (c) => (await c.query(
+    `insert into public.questions (survey_id, position, type, text, required, config)
+     values ($1, 1, 'single', 'How often?', true, '{"options":["Weekly","Monthly"]}'::jsonb),
+            ($1, 2, 'rating', 'How satisfied?', false, '{"scale":5}'::jsonb)
+     returning id`, [survey.id])).rows);
+  assert.equal(qs.length, 2);
+  ok('a member can create a survey and its questions');
+
+  // a draft is not open to the public
+  const draftView = await withContext(asAnon, async (c) => (await c.query(
+    `select id from public.questions where survey_id = $1`, [survey.id])).rows);
+  assert.equal(draftView.length, 0);
+  ok('a draft survey is invisible to the public');
+
+  // publish ------------------------------------------------------
+  await withContext(asOwner, (c) => c.query(
+    `update public.surveys set status='live', published_at=now() where id=$1`, [survey.id]));
+  const liveView = await withContext(asAnon, async (c) => (await c.query(
+    `select id from public.questions where survey_id = $1`, [survey.id])).rows);
+  assert.equal(liveView.length, 2);
+  ok('publishing makes it readable without a session');
+
+  // answer -------------------------------------------------------
+  const rid = randomUUID();
+  await withContext(asAnon, (c) => c.query(
+    `insert into public.responses (id, survey_id, respondent_ref, channel, status, started_at)
+     values ($1, $2, 'R-9001', 'link', 'in_progress', now())`, [rid, survey.id]));
+  await queryElevated(`select app.save_answer($1,$2,$3,$4::jsonb,$5)`,
+    [rid, qs[0].id, survey.id, JSON.stringify('Weekly'), 1200]);
+  await queryElevated(`select app.save_answer($1,$2,$3,$4::jsonb,$5)`,
+    [rid, qs[1].id, survey.id, JSON.stringify(4), 800]);
+  ok('a stranger can start a response and answer it');
+
+  // finish -------------------------------------------------------
+  const [{ submitted }] = await queryElevated(
+    `select app.submit_response($1,$2,$3) as submitted`, [rid, survey.id, 42000]);
+  assert.equal(submitted, true);
+  const [done] = await withContext(asOwner, async (c) => (await c.query(
+    `select status, submitted_at, duration_ms from public.responses where id=$1`, [rid])).rows);
+  assert.equal(done.status, 'completed', 'response did not reach completed');
+  assert.ok(done.submitted_at);
+  ok('submitting actually marks the response completed');
+
+  // the results are there for analysis
+  const answers = await withContext(asOwner, async (c) => (await c.query(
+    `select value from public.answers where response_id = $1 order by created_at`, [rid])).rows);
+  assert.equal(answers.length, 2);
+  ok('the answers come back for analysis');
+
+  // duplicate blocking depends on all of the above
+  const [{ blocked }] = await queryElevated(
+    `select app.has_completed_response($1,$2) as blocked`, [survey.id, 'R-9001']);
+  assert.equal(blocked, true);
+  const [{ blocked: other }] = await queryElevated(
+    `select app.has_completed_response($1,$2) as blocked`, [survey.id, 'R-0000']);
+  assert.equal(other, false);
+  ok('a returning respondent is blocked, a new one is not');
+
+  // guards -------------------------------------------------------
+  const [{ submitted: again }] = await queryElevated(
+    `select app.submit_response($1,$2,$3) as submitted`, [rid, survey.id, 99]);
+  assert.equal(again, true);
+  const [stamp] = await withContext(asOwner, async (c) => (await c.query(
+    `select duration_ms from public.responses where id=$1`, [rid])).rows);
+  assert.equal(Number(stamp.duration_ms), 42000);
+  ok('submitting twice does not rewrite when they finished');
+
+  await rejects('a response cannot be submitted against another survey',
+    () => queryElevated(`select app.submit_response($1,$2,null)`,
+                        [rid, '00000000-0000-0000-0000-0000000000ff']),
+    /no open response/);
+
+  const rid2 = randomUUID();
+  await withContext(asAnon, (c) => c.query(
+    `insert into public.responses (id, survey_id, channel, status, started_at)
+     values ($1,$2,'link','in_progress', now())`, [rid2, survey.id]));
+  await withContext(asOwner, (c) => c.query(
+    `update public.surveys set status='closed' where id=$1`, [survey.id]));
+  await rejects('a closed survey accepts no more submissions',
+    () => queryElevated(`select app.submit_response($1,$2,null)`, [rid2, survey.id]),
+    /no open response/);
+
+  // an absurd client-reported duration is clamped, not stored
+  await withContext(asOwner, (c) => c.query(
+    `update public.surveys set status='live' where id=$1`, [survey.id]));
+  const [{ submitted: s3 }] = await queryElevated(
+    `select app.submit_response($1,$2,$3) as submitted`, [rid2, survey.id, 999999999999]);
+  assert.equal(s3, true);
+  const [clamped] = await withContext(asOwner, async (c) => (await c.query(
+    `select duration_ms from public.responses where id=$1`, [rid2])).rows);
+  assert.equal(Number(clamped.duration_ms), 86400000);
+  ok('a nonsense duration is clamped rather than skewing the averages');
 
   await queryAsStaff(`delete from public.tenants where id = $1`, [tid]);
 }

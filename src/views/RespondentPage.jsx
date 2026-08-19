@@ -301,14 +301,30 @@ export default function RespondentPage() {
     }
     if (step >= visibleQuestions.length - 1) {
       if (!previewMode) {
-        await supabase
-          .from('responses')
-          .update({
-            status: 'completed',
-            submitted_at: new Date().toISOString(),
-            duration_ms: Date.now() - startedAtRef.current,
-          })
-          .eq('id', responseId);
+        // Not a plain update: an UPDATE has to read the row it changes,
+        // and respondents cannot read collected responses, so the
+        // statement matched nothing and quietly did nothing -- while
+        // this screen still said thank you. The server decides now, and
+        // if it refuses the respondent is told rather than misled.
+        let ok = false;
+        try {
+          const res = await fetch('/api/public/submit', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              responseId,
+              surveyId,
+              durationMs: Date.now() - startedAtRef.current,
+            }),
+          });
+          ok = res.ok && (await res.json()).submitted === true;
+        } catch {
+          ok = false;
+        }
+        if (!ok) {
+          setError('We could not record your submission. Please check your connection and try again.');
+          return;
+        }
       }
       setSubmitted(true);
     } else {
