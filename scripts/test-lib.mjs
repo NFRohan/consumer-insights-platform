@@ -10,6 +10,7 @@
 import assert from 'node:assert/strict';
 import { matchValue, matchResponse, filterResponseIds, emptyFilter } from '../src/lib/filterClauses.js';
 import { relativeDays, remainingLabel, daysUntil } from '../src/lib/relativeTime.js';
+import { fanOut } from '../src/lib/apiClient.js';
 
 let passed = 0;
 const ok = (label) => { console.log('  pass:', label); passed++; };
@@ -157,5 +158,44 @@ console.log('\nrelative time');
   assert.equal(remainingLabel(inDays(-1)), 'expired');
   ok('the chip label switches to hours near the end, then to expired');
 }
+
+// =====================================================================
+console.log('\nthe polling stand-in');
+//
+// There is no change feed behind this app, so "realtime" is a timer that
+// tells views to re-fetch. Getting the fan-out wrong is invisible in
+// code review and very visible on screen: the surveys table blinked
+// every couple of seconds because a view watching two tables re-fetched
+// twice per tick, each time replacing itself with a spinner.
+// =====================================================================
+{
+  let calls = 0;
+  const load = () => { calls += 1; };
+
+  assert.equal(fanOut([load, load], 'surveys', false), 1);
+  assert.equal(calls, 1);
+  ok('watching two tables with one handler re-fetches once, not twice');
+
+  calls = 0;
+  const other = () => { calls += 10; };
+  assert.equal(fanOut([load, other], 'surveys', false), 2);
+  assert.equal(calls, 11);
+  ok('genuinely different handlers each still run');
+
+  calls = 0;
+  assert.equal(fanOut([load, load], 'surveys', true), 0);
+  assert.equal(calls, 0);
+  ok('a hidden tab polls nothing at all');
+
+  calls = 0;
+  const boom = () => { throw new Error('subscriber blew up'); };
+  assert.equal(fanOut([boom, load], 'surveys', false), 2);
+  assert.equal(calls, 1);
+  ok('one broken subscriber does not stop the others');
+
+  assert.equal(fanOut(undefined, 'surveys', false), 0);
+  ok('no subscribers is not an error');
+}
+
 
 console.log(`\nALL LIB TESTS PASSED (${passed} checks)\n`);

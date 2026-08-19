@@ -17,7 +17,7 @@
 // =====================================================================
 
 const TOKEN_KEY = 'cip.session';
-const POLL_MS = Number(import.meta.env.VITE_POLL_MS || 4000);
+const POLL_MS = Number(import.meta.env?.VITE_POLL_MS || 4000);
 
 // ---------------------------------------------------------------------
 // session storage
@@ -143,6 +143,34 @@ class Query {
 // ---------------------------------------------------------------------
 // polling stand-in for realtime
 // ---------------------------------------------------------------------
+
+/** Nothing changes while nobody is looking. */
+export const isHidden = () =>
+  typeof document !== 'undefined' && document.visibilityState === 'hidden';
+
+/**
+ * One tick of the poll: call each DISTINCT handler once, and nothing at
+ * all while the tab is hidden.
+ *
+ * Real change events name the table that changed, so watching two tables
+ * means two subscriptions. A timer cannot tell them apart, and every
+ * handler here means the same thing — "re-fetch". Calling all of them
+ * made a view that watches two tables re-fetch twice per tick forever,
+ * which is what made the surveys table blink.
+ *
+ * @returns how many handlers were called, for tests.
+ */
+export function fanOut(handlers, name, hidden) {
+  if (hidden) return 0;
+  const seen = new Set();
+  for (const h of handlers || []) {
+    if (seen.has(h)) continue;
+    seen.add(h);
+    try { h({ table: name }); } catch { /* listener's problem */ }
+  }
+  return seen.size;
+}
+
 class Channel {
   constructor(name) {
     this.name = name;
@@ -157,10 +185,10 @@ class Channel {
 
   subscribe() {
     if (this.timer) return this;
-    this.timer = setInterval(() => {
-      // Views re-fetch on any event, so the payload is not inspected.
-      this.handlers.forEach((h) => { try { h({ table: this.name }); } catch { /* ignore */ } });
-    }, POLL_MS);
+    this.timer = setInterval(
+      () => fanOut(this.handlers, this.name, isHidden()),
+      POLL_MS,
+    );
     return this;
   }
 

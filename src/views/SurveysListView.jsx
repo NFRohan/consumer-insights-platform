@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { Btn, Chip, Card, Stat, Empty, Icon, fmt } from '../components/index.js';
@@ -14,8 +14,13 @@ export default function SurveysListView({ ctx }) {
   const [filter, setFilter] = useState('all');
   const [error, setError] = useState(null);
 
+  // Only the very first load may replace the table with a spinner. This
+  // also runs on a timer, and blanking a populated table every few
+  // seconds looks like the page breaking rather than like it refreshing.
+  const firstLoad = useRef(true);
+
   const load = async () => {
-    setLoading(true);
+    if (firstLoad.current) setLoading(true);
     setError(null);
     try {
       const { data: srv, error: srvErr } = await supabase
@@ -46,6 +51,7 @@ export default function SurveysListView({ ctx }) {
       console.error('surveys load failed', err);
       setError(err?.message || String(err));
     } finally {
+      firstLoad.current = false;
       setLoading(false);
     }
   };
@@ -54,8 +60,11 @@ export default function SurveysListView({ ctx }) {
     load();
     const ch = supabase
       .channel('surveys-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'surveys' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'responses' }, () => load())
+      // Same reference twice on purpose: the polling stand-in fires each
+      // distinct handler once per tick, so this re-fetches once rather
+      // than once per table watched.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'surveys' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'responses' }, load)
       .subscribe();
     return () => supabase.removeChannel(ch);
   }, []);
