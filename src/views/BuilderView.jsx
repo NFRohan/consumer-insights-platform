@@ -274,7 +274,7 @@ export default function BuilderView({ ctx }) {
                 <div className="row" style={{ justifyContent: 'space-between' }}>
                   <div className="q-meta">
                     <Chip tone="ink">{`Q${idx + 1}`}</Chip>
-                    <Chip>{QTYPE[q.type]?.label || q.type}</Chip>
+                    <Chip data-kind="qtype">{QTYPE[q.type]?.label || q.type}</Chip>
                     {q.required && <Chip tone="warn">Required</Chip>}
                     {q.logic?.skip && <Chip tone="accent">Skip logic</Chip>}
                   </div>

@@ -1,6 +1,11 @@
 import React, { useMemo, useRef, useState } from 'react';
 import Modal from '../../components/Modal.jsx';
 import { Btn, Chip, Icon, ProgressBar } from '../../components/index.js';
+import { QUESTION_TYPES } from '../../lib/constants.js';
+
+// The import preview names types the same way the builder does, so a
+// file's contents read against the same vocabulary the user just saw.
+const QTYPE = Object.fromEntries(QUESTION_TYPES.map((q) => [q.id, q]));
 
 // Heavy libs (xlsx + mammoth) live behind a dynamic import so they don't
 // bloat the main app bundle. Loaded lazily the first time the modal needs them.
@@ -228,7 +233,7 @@ export function ImportModal({ onClose, onConfirm }) {
               <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
                 <div className="row gap-2" style={{ marginBottom: 3 }}>
                   <Chip tone="ink">Q{i + 1}</Chip>
-                  <Chip>{q.type}</Chip>
+                  <Chip data-kind="qtype">{QTYPE[q.type]?.label || q.type}</Chip>
                   {q.required && <Chip tone="warn">Required</Chip>}
                 </div>
                 <div style={{ fontSize: 13 }}>{q.text}</div>

@@ -539,6 +539,24 @@ body[data-density='compact'] .view {
   font-family: var(--font-mono);
   letter-spacing: 0.01em;
 }
+
+/* The question-type chip is one column in a list, so it is sized to the
+   longest label rather than to its own text -- otherwise every question
+   card's chip row starts at a different place and the list reads as
+   ragged. 19ch is "Hotspot / Click Map" and "Reaction Time (IAT)", the
+   two longest; the chip font is monospace, so ch is exact. The 16px
+   covers padding and borders, which box-sizing includes. min-width, not
+   width, so a longer label added later grows instead of truncating. */
+.chip[data-kind="qtype"] {
+  /* 16px for padding and borders, which box-sizing counts, plus 6px of
+     slack: the chip carries letter-spacing, which adds a couple of
+     pixels across nineteen characters, and a fallback monospace face may
+     be a shade wider. nowrap because a wrapped label would break the
+     fixed chip height and look worse than the raggedness this fixes. */
+  min-width: calc(19ch + 22px);
+  justify-content: center;
+  white-space: nowrap;
+}
 .chip[data-tone='accent'] {
   background: var(--accent-soft);
   border-color: color-mix(in oklch, var(--accent) 30%, transparent);
