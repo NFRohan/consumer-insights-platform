@@ -25,3 +25,11 @@ design_systems/
 
 # Cygwin/MSYS crash dumps
 *.stackdump
+
+.vercel
+.env*
+
+# Re-asserted last: the Vercel CLI appended `.env*` above, and in
+# gitignore the final matching pattern wins. The example file carries
+# placeholders only and is meant to be committed.
+!.env.example
