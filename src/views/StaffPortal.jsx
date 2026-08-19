@@ -452,10 +452,8 @@ export default function StaffPortal() {
   }
 
   return (
-    <div className="app" style={{ display: 'block' }}>
-      <div className="main" style={{ padding: '28px 32px' }}>
-        <Portal />
-      </div>
+    <div className="staff-shell">
+      <Portal />
     </div>
   );
 }

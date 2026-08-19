@@ -121,10 +121,25 @@ a:hover {
   grid-column: 1;
   grid-row: 2;
 }
+/* A column, so anything placed above the view (the expiry banner) takes
+   its own height and the view gets what is left.
+   `.view` is `height: 100%`, which used to mean 100% of `.main` -- fine
+   while the view was the only child, but the banner then pushed an equal
+   amount of content past the bottom of a container that clips. The last
+   rows of every screen became unreachable exactly in the final 48 hours,
+   which is when someone is trying to export their data. */
 .main {
   grid-column: 2;
   grid-row: 2;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.main > .view {
+  flex: 1;
+  height: auto;
+  min-height: 0;   /* a flex item will not shrink below content without this */
 }
 
 /* shared chrome */
@@ -357,6 +372,35 @@ a:hover {
 }
 body[data-density='compact'] .view {
   padding: 16px 22px 30px;
+}
+
+/* -------------------------------------------------------------------
+   Staff console shell
+
+   The console is one column, not the product's sidebar/topbar/pane grid,
+   so it must not reuse `.app`. `.app` is `height: 100vh; overflow:
+   hidden` and delegates scrolling to `.view` inside `.main`, which works
+   only while the grid gives those panes a definite height. The console
+   flipped `.app` to `display: block`, which removed that height -- so
+   `.view`'s `height: 100%` resolved to auto, nothing became a scroll
+   container, and `overflow: hidden` on the 100vh wrapper simply clipped
+   everything below the fold. No scrollbar, no way down: the activity log
+   was reachable only by zooming out.
+
+   Here the document scrolls, which is what a single-column page wants.
+   ------------------------------------------------------------------- */
+.staff-shell {
+  min-height: 100vh;
+  background: var(--bg);
+}
+/* `.view` is written for the panelled layout; inside the console it just
+   holds content and lets the page scroll. */
+.staff-shell .view {
+  height: auto;
+  overflow: visible;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 28px 32px 56px;
 }
 
 .view-head {
