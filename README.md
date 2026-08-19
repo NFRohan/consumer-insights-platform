@@ -1,145 +1,143 @@
 # Consumer Insights Platform
 
-Consumer Insights Platform — a real-time survey platform by Intelligent Machines. Stack:
+A survey and consumer-research platform by Intelligent Machines. Design a
+survey, publish it to a public link, collect responses from people with no
+account, and analyse the results.
 
-- **React + Vite** (front-end)
-- **Supabase** (Postgres, Auth, Realtime, RLS)
-- Design system ported from the supplied mockups (Geist font, OKLCH tokens)
+- **React + Vite** front end
+- **Serverless functions** under `api/`, deployed on Vercel
+- **Postgres** on Neon — no extensions required
 
-## What's covered (MVP)
+Prospects are given a username and password that expires on its own. Each one
+gets a private, fully populated copy of the demo, walled off from every other.
 
-| BRD area | Status |
-|---|---|
-| §6 Survey creation & customization | ✅ Builder with 16 question types |
-| §7.1 Skip logic / branching (AND/OR) | ✅ |
-| §7.1 Multilingual content (EN / Bangla / Banglish) | ✅ Per-question translations |
-| §7.2 16 question types (Single, Multi, Dropdown, Matrix, Rating, Slider, Rank, Open Text, NPS, Constant Sum, Image Options, IAT, Fill-blanks, Audio, Video, Hotspot) | ✅ |
-| §7.3 Branding (custom CSS, custom domain, brand colors) | ✅ |
-| §7.4 Real-time dashboard | ✅ Supabase Realtime subscription |
-| §7.4 Cross-tab analysis | ✅ Heat-mapped matrix |
-| §7.4 Sentiment on open text | ✅ Lightweight classifier |
-| §7.4 Funnel / drop-off | ✅ |
-| §7.4 Export (CSV) | ✅ |
-| §7.5 Embed snippet, public link, App-in-App view | ✅ |
-| §7.6 Data cleaning rules | ✅ Flag / soft-delete |
-| §7.7 Distribution (SMS / push / email — stubbed via webhook) | ✅ |
-| §7.8 User & role management | ✅ Admin / Creator / Viewer |
-| §7.9 Audit log | ✅ Real-time stream |
-| §8.2 Block re-submission, RLS, JWT auth | ✅ |
+## What it does
 
----
+**Building** — 16 question types (single and multi select, dropdown, matrix,
+rating, slider, drag-and-drop rank, open text, NPS, constant sum, image
+options, reaction time, fill in the blanks, audio, video, hotspot). Skip logic
+with AND/OR branching, piping answers into later questions, question and option
+randomisation, and per-question translations. Questions can also be imported
+from Word or Excel.
 
-## 1. Apply the database schema
+**Collecting** — a public link anyone can open without an account, an embed
+snippet, and optional respondent IDs so a returning respondent can be turned
+away when duplicate blocking is on.
 
-Open the [Supabase SQL editor](https://supabase.com/dashboard/project/fsltddopaoknbywxnsod/sql/new) and run:
+**Analysing** — a live dashboard, cross-tabs with filtering by respondent
+attributes or by how someone answered, keyword sentiment on open text,
+drop-off, and export to Excel (responses, codebook and summary) or CSV.
 
-```
-supabase/migrations/20260509_init.sql
-```
+**Running it** — data cleaning rules that flag or soft-delete, user and role
+management (admin, creator, viewer), and an audit log.
 
-This creates: `profiles`, `surveys`, `questions`, `responses`, `answers`, `distributions`, `cleaning_rules`, `audit_logs`. It also wires up RLS policies and adds the relevant tables to the realtime publication.
+**Issuing access** — a staff console at `/staff` for creating, extending,
+revoking and resetting time-limited evaluation logins.
 
-> **Tip:** in `Authentication → Settings`, disable "Confirm email" while developing so freshly-signed-up users can immediately log in.
+### What it does not do
 
-## 2. Run locally
+Said plainly, because the screens say so too:
+
+- **Nothing is actually sent.** Distribution records a batch and issues a
+  tracked link whose opens are counted for real, but delivering SMS, push or
+  email needs a provider connected. Delivery figures read as unknown rather
+  than as zero.
+- **Live updates poll**, every few seconds, rather than streaming. Views
+  refresh in place, and polling stops while the tab is hidden.
+- **Sentiment is keyword-based** and meant to demonstrate the screen, not to be
+  relied on.
+- **No offline capture.** Responses need a connection.
+
+## Running it locally
 
 ```bash
-cd app
 npm install
+cp .env.example .env      # then fill in DATABASE_URL and JWT_SECRET
 npm run dev
 ```
 
-Open http://localhost:5173
+Open <http://localhost:5173>. The dev server also serves `api/` the way Vercel
+does, so there is no second process to run.
 
-## 3. Try it out
+## The database
 
-1. **Sign up** as the first user (e.g. `admin@im.demo`) — they become a `creator` by default. To make yourself an admin, go to the SQL editor and run:
-   ```sql
-   update profiles set role = 'admin' where email = 'admin@im.demo';
-   ```
-2. **Create a survey** from the Surveys list.
-3. **Add questions** in the Builder — pick from the left palette.
-4. **Publish** the survey.
-5. **Open the public link** (Distribute → Public link → Open). Submit a few responses.
-6. Watch the **Live dashboard** update in real time as responses come in.
+Everything is in `db/`, applied in order. It is plain Postgres — the files are
+re-runnable, so applying the set twice is a no-op rather than an error.
+`db/README.md` covers the run order, the isolation model and the one grant you
+need before deploying.
 
 ## Staff console
 
-Evaluation credentials are issued from `/staff`, not self-registered.
+Evaluation logins are issued at `/staff`. There is no self-service sign-up.
 
-Create the first operator account (there is no self-service path):
+Create the first operator account:
 
 ```bash
-DATABASE_URL=... node scripts/create-staff.mjs ops.yourname "Your Name"
-
-# Change an existing staff account's username or password. The password
-# comes in on stdin so it stays out of shell history and the process
-# list, and the row is updated rather than replaced -- staff_audit
-# references it ON DELETE SET NULL, so deleting an account to re-make it
-# would unattribute everything it had ever done.
-printf %s 'the-new-password'   | node --env-file=.env scripts/staff-credentials.mjs ops.yourname --username new.name
+node --env-file=.env scripts/create-staff.mjs ops.yourname "Your Name"
 ```
 
-The password is generated and printed once; only its hash is stored.
+Change an existing account's username or password. The password is read from
+standard input so it stays out of shell history and the process list, and the
+row is updated rather than replaced — the staff audit trail references it, so
+deleting an account to re-make it would unattribute everything it had done:
 
-At `/staff` an operator can:
-
-- **Issue access** — name, username and a TTL from 1 day to 90. The
-  password is generated server-side and shown once, on the reveal card.
-- **See every sandbox** with its live status, expiry and whether the
-  prospect has ever signed in.
-- **Extend** by 7 days, or **revoke** immediately (behind a confirm).
-
-Revoking cuts access but keeps the data, so a trial can be reinstated by
-extending it. `app.purge_expired()` is the irreversible one and is never
-implicit.
-
-Staff accounts sit outside every tenant and **cannot read prospect
-survey data** — the console shows the shape of an evaluation, never its
-contents. That is enforced by RLS, not by the UI.
-
-
-## 4. Project layout
-
-```
-app/
-├── index.html
-├── src/
-│   ├── main.jsx               # entry
-│   ├── App.jsx                # router
-│   ├── Shell.jsx              # topbar + sidebar + view switcher
-│   ├── components/            # design system (Icon, Card, Btn, Chip, …)
-│   ├── context/AuthContext    # session + profile
-│   ├── lib/
-│   │   ├── supabase.js
-│   │   ├── audit.js
-│   │   └── constants.js
-│   └── views/
-│       ├── AuthView.jsx
-│       ├── SurveysListView.jsx
-│       ├── BuilderView.jsx
-│       ├── BrandingView.jsx
-│       ├── DistributeView.jsx
-│       ├── RespondentPage.jsx   # public /r/:surveyId
-│       ├── LiveDashboardView.jsx
-│       ├── CrossTabView.jsx
-│       ├── SentimentView.jsx
-│       ├── CleaningView.jsx
-│       ├── UsersView.jsx
-│       ├── AuditView.jsx
-│       └── ConfigView.jsx
-├── styles/index.css
-├── supabase/migrations/20260509_init.sql
-├── .env
-└── package.json
+```bash
+printf %s 'the-new-password' \
+  | node --env-file=.env scripts/staff-credentials.mjs ops.yourname --username new.name
 ```
 
-## 5. Notes
+Passwords are shown once and stored only as a hash.
 
-- **Respondent ID tracking**: pass `?ref=R-10428` on the public link, the App-in-App handoff, or fill in the start screen. Stored on the response, used for re-submission blocking. (`?msisdn=` and `?phone=` are still accepted, so links issued before the rename keep working.)
-- **Block re-submission**: per-survey toggle in builder settings; checks completed responses with the same respondent ID before starting.
-- **Real-time**: powered by Supabase's Postgres CDC publication. The Live dashboard, audit log, and surveys list all subscribe.
-- **Offline / sync**: not implemented in this MVP slice (BRD §8.1 — would queue responses in IndexedDB and sync when back online).
-- **SMS / push**: stubbed — the Distribute view records a `distributions` row with simulated delivery/click rates. Wire up to your SMS/push provider by adding a Supabase Edge Function and posting to `/distributions` from there.
-- **Sentiment**: keyword-based; production should call a Bangla-aware NLP service.
-- **Export**: CSV implemented; XLSX/SPSS would slot in as additional exporters.
+An operator can issue access with a chosen expiry, see every sandbox with its
+status and whether the prospect has ever signed in, extend, revoke, reset a
+forgotten password, and purge lapsed sandboxes. Revoking keeps the data so a
+trial can be reinstated by extending it; purging is the irreversible one and is
+never implicit.
+
+Expiry, revocation and password resets all end an existing session immediately,
+including a browser tab that was already open.
+
+Staff sit outside every tenant and **cannot read prospect survey data**. The
+console shows the shape of an evaluation, never its contents, and that is
+enforced by the database rather than by the interface.
+
+## Tests
+
+```bash
+npm test              # shared logic, and every view renders
+npm run test:api      # the database-backed suite
+```
+
+`npm test` needs no database. It covers the pure logic and puts every view
+through a render pass — a build compiles code that throws on render, so the
+render pass is what catches a blank screen.
+
+The database suites live alongside them, plus two SQL suites in `db/tests/`
+covering tenant isolation and the provisioning lifecycle. Run them against a
+scratch database; `db/README.md` explains how.
+
+## Project layout
+
+```
+api/                    serverless functions
+├── _lib/               shared: db access, auth, the query whitelist
+├── data.js             the one data endpoint the client talks to
+├── auth/               login, session check
+├── admin/              staff only: tenants, actions, audit
+└── public/             anonymous respondents: answer, submit, click, resubmission
+
+db/                     schema, policies, provisioning, seed  (run in order)
+└── tests/              isolation and provisioning suites
+
+scripts/                test suites and staff account tools
+
+src/
+├── App.jsx             router
+├── Shell.jsx           topbar, sidebar, view switcher
+├── components/         design system
+├── context/            session
+├── lib/                api client, filtering, export, import parsing
+└── views/              one per screen, plus the public respondent page
+
+docs/DEPLOY.md          deploying to Vercel and Neon
+```

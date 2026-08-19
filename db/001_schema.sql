@@ -328,8 +328,8 @@ for each row execute function app.set_updated_at();
 -- =====================================================================
 -- audit_logs
 --
--- FR33 asked for the affected response ids on cleaning runs, which the
--- Supabase build never stored. meta carries them now.
+-- The previous build never stored which responses a cleaning run
+-- affected, so a run could not be reviewed afterwards. meta carries them.
 -- =====================================================================
 create table if not exists public.audit_logs (
   id         uuid primary key default gen_random_uuid(),

@@ -141,7 +141,7 @@ export default function LiveDashboardView({ ctx }) {
           <div className="crumb">Analyze › Live dashboard</div>
           <h1>Real-time dashboard</h1>
           <div className="desc">
-            Live response stream — Supabase Realtime subscription. No refresh needed.
+            Live response stream. Refreshes on its own — no need to reload.
           </div>
         </div>
         <div className="row gap-2">

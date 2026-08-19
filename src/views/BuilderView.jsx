@@ -672,7 +672,7 @@ function QuestionInspector({ q, questions, activeTab, setActiveTab, onChange, on
           </div>
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <div>
-              <div style={{ fontWeight: 500 }}>Reaction time (FR7.7)</div>
+              <div style={{ fontWeight: 500 }}>Reaction time</div>
               <div className="small mute">Capture millisecond response latency</div>
             </div>
             <Switch
@@ -681,7 +681,7 @@ function QuestionInspector({ q, questions, activeTab, setActiveTab, onChange, on
             />
           </div>
           <div>
-            <label className="label">Validation (FR7.5)</label>
+            <label className="label">Validation</label>
             <select
               className="select"
               value={cfg.validation || 'none'}

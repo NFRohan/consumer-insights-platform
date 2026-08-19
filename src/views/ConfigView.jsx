@@ -68,7 +68,7 @@ export default function ConfigView() {
       </div>
 
       <div className="split-2" style={{ alignItems: 'flex-start' }}>
-        <Card title="Performance targets" sub="Per BRD §8.1">
+        <Card title="Performance targets" sub="At full production scale">
           <div className="col gap-2 small">
             <Row k="Concurrent active respondents / minute" v="100,000" />
             <Row k="Active concurrent admins / minute" v="4–5" />
@@ -80,18 +80,18 @@ export default function ConfigView() {
             <Row k="Action response time" v="≤ 2 s" />
           </div>
         </Card>
-        <Card title="Tech stack" sub="Per BRD §8.5">
+        <Card title="Tech stack" sub="What this environment runs on">
           <div className="row gap-2" style={{ flexWrap: 'wrap' }}>
             <Chip tone="accent">React (Vite)</Chip>
-            <Chip tone="accent">Supabase</Chip>
+            <Chip tone="accent">Serverless API</Chip>
             <Chip>Postgres</Chip>
-            <Chip>Realtime via Postgres replication</Chip>
-            <Chip>JWT auth</Chip>
-            <Chip>RLS</Chip>
-            <Chip>Edge Functions ready</Chip>
+            <Chip>Row-level security</Chip>
+            <Chip>JWT sessions</Chip>
+            <Chip>Live updates by polling</Chip>
           </div>
           <div className="small mute" style={{ marginTop: 12 }}>
-            Production targets: AWS, Kubernetes, ELK, CloudFront CDN per BRD §8.4.
+            This is the evaluation environment. A production rollout is sized and
+            hosted to suit the organisation it serves.
           </div>
         </Card>
       </div>

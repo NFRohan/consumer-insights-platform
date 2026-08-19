@@ -11,7 +11,7 @@ const QTYPE = Object.fromEntries(QUESTION_TYPES.map((q) => [q.id, q]));
 // bloat the main app bundle. Loaded lazily the first time the modal needs them.
 const loadParser = () => import('../../lib/importParser.js');
 
-// =================== Import Modal (FR1, FR2) ===================
+// =================== Import Modal ===================
 export function ImportModal({ onClose, onConfirm }) {
   const [step, setStep] = useState(1); // 1: input, 2: review
   const [pasted, setPasted] = useState('');
@@ -21,7 +21,7 @@ export function ImportModal({ onClose, onConfirm }) {
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef(null);
 
-  // FR2 — paste-text quick parser. Looks for one question per line; if a line
+  // Paste-text quick parser. Looks for one question per line; if a line
   // contains delimiter-separated text it becomes a single-select question's
   // options under a generated stub text.
   const parsedFromPaste = useMemo(() => {
@@ -102,9 +102,9 @@ export function ImportModal({ onClose, onConfirm }) {
   return (
     <Modal title="Import questions from Word / Excel" onClose={onClose} width={760}>
       <div className="small mute" style={{ marginBottom: 12 }}>
-        <strong>FR1</strong> — upload a structured .xlsx or .docx and the system extracts
-        questions, options, and types. <strong>FR2</strong> — paste delimited text (line breaks,
-        commas, semicolons, pipes). Download the template to see the expected structure.
+        Upload a structured .xlsx or .docx and the questions, options and types
+        are read out of it — or paste delimited text (line breaks, commas,
+        semicolons, pipes). Download the template to see the expected structure.
       </div>
       {step === 1 && (
         <div>
@@ -736,7 +736,7 @@ export function LanguageModal({ onClose, questions, initialLanguages = ['en', 'b
   );
 }
 
-// =================== Randomize Modal (FR3) ===================
+// =================== Randomize Modal ===================
 export function RandomizeModal({ onClose, questions, initial = {}, onSave }) {
   const [blockRandomize, setBlockRandomize] = useState(initial.block ?? false);
   const [blockMode, setBlockMode] = useState(initial.blockMode || 'absolute');
@@ -746,8 +746,8 @@ export function RandomizeModal({ onClose, questions, initial = {}, onSave }) {
   return (
     <Modal title="Randomization & rotation" onClose={onClose} width={620}>
       <div className="small mute" style={{ marginBottom: 14 }}>
-        FR3 — apply absolute (true random) or dictated (balanced/pacing) rotation at block,
-        question, or option level.
+        Apply absolute (true random) or dictated (balanced, pacing) rotation at
+        block, question or option level.
       </div>
       <div className="col gap-3">
         <div className="card" style={{ padding: 14 }}>

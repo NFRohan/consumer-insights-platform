@@ -1,4 +1,4 @@
-// Question type catalogue (from BRD §7.2 Customizable Question Types)
+// The question types the builder offers.
 export const QUESTION_TYPES = [
   { id: 'single', label: 'Single Select', group: 'Closed', glyph: '◉' },
   { id: 'multi', label: 'Multi Select', group: 'Closed', glyph: '☑' },

@@ -189,11 +189,11 @@ invent. Worth stating in the UI copy that it counts unique browsers.
 
 ### Why
 
-FR11 asks for filtering across demographic and behavioural variables.
-The build has two dropdowns and nothing else, so it demonstrates a
-cross-tab rather than providing one. The BRD's own stated pain is
-*"Excel requires manual charting, pivoting and cross-tabulation"* — this
-is the feature that answers it.
+Filtering across demographic and behavioural variables is the point of a
+cross-tab. The build has two dropdowns and nothing else, so it
+demonstrates one rather than providing one. The pain it is meant to
+answer is spreadsheets needing manual charting, pivoting and
+cross-tabulation by hand.
 
 ### Design decisions
 

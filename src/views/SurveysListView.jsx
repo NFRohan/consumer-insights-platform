@@ -85,7 +85,7 @@ export default function SurveysListView({ ctx }) {
       // eslint-disable-next-line no-console
       console.warn('[createSurvey] timed out — flipping creating=false');
       setCreating(false);
-      setError('The Supabase request did not return within 8s. Check the browser Network tab for the POST to /rest/v1/surveys.');
+      setError('That took longer than 8 seconds and may not have gone through. Check your connection and try again.');
     }, 8000);
     try {
       const { data, error: insErr } = await supabase
