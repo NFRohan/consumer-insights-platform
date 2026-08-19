@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Survey Platform</title>
+    <script>
+      // Fallback for static hosts (GitHub Pages, etc.) that serve 404.html
+      // for unknown paths instead of supporting rewrites. We restore the
+      // intended URL via History API so React Router can pick it up.
+      (function () {
+        var pathAndQuery = location.pathname + location.search + location.hash;
+        sessionStorage.setItem('spa-redirect', pathAndQuery);
+        location.replace('/');
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

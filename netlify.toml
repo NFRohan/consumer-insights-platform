@@ -1,0 +1,5 @@
+# Single-page-app fallback so client-side routes like /r/:surveyId work on direct load.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

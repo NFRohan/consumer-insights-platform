@@ -1,0 +1,27 @@
+node_modules
+dist
+.DS_Store
+*.log
+
+# gitignore has no trailing comments -- a `#` after a pattern is part of
+# the pattern. This negation used to carry one, so it matched nothing,
+# `*.mjs` won, and the three scripts below were silently left out of the
+# repository: both test suites and the staff-account tool.
+*.mjs
+!scripts/*.mjs
+.temp
+# Local secrets — DATABASE_URL and JWT_SECRET live here
+.env
+.env.local
+.env.*.local
+# ...and anything kept beside them. `.env.remote.bak` held live Supabase
+# keys and matched none of the patterns above.
+.env.*
+!.env.example
+
+# The original design mockups this app was built from. Nothing imports
+# them, they were never de-branded, and this repository is public.
+design_systems/
+
+# Cygwin/MSYS crash dumps
+*.stackdump
