@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node scripts/test-lib.mjs && node scripts/test-render.mjs",
+    "test:api": "node --env-file=.env scripts/test-api.mjs"
   },
   "dependencies": {
     "jose": "^6.2.9",

@@ -66,8 +66,12 @@ export default function BuilderView({ ctx }) {
   const [modal, setModal] = useState(null); // 'import' | 'logic' | 'pipe' | 'lang' | 'rand' | 'published'
   const [linkCopied, setLinkCopied] = useState(false);
 
+  const surveyId = ctx.activeSurveyId;
+
   // The address a respondent opens. Same shape the Distribute screen
   // uses, and the same one the ?d= tracked links are built from.
+  // Declared after surveyId, not before: `const` is not hoisted, and
+  // reading it early throws on every render rather than reading undefined.
   const publicLink = surveyId ? `${window.location.origin}/r/${surveyId}` : '';
 
   const copyLink = async () => {
@@ -81,8 +85,6 @@ export default function BuilderView({ ctx }) {
       setModal('published');
     }
   };
-
-  const surveyId = ctx.activeSurveyId;
 
   const load = async () => {
     if (!surveyId) {
