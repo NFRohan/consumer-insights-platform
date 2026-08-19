@@ -12,7 +12,7 @@ to check when something changes.
 Neon project `neondb`, region `ap-southeast-1` (Singapore), Postgres 18.6.
 All six files in `db/` are applied. Seeded with the template tenant
 (2 surveys, 22 questions, 360 responses, 3074 answers) and one staff
-account, `ops.rizvi`.
+account, `IM.Admin`.
 
 Verified against that database, not just locally:
 
@@ -124,7 +124,7 @@ reads `.env` directly.
 ## After the first deploy, check
 
 1. `/` loads and shows the sign-in screen.
-2. `/staff` — sign in as `ops.rizvi`, mint a 3-day evaluation.
+2. `/staff` — sign in as `IM.Admin`, mint a 3-day evaluation.
 3. Sign in as the minted credential in a private window: two surveys,
    360 responses, and an expiry chip in the top bar.
 4. Open a survey's public link with no session — it should render.

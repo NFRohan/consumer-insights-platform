@@ -71,6 +71,13 @@ Create the first operator account (there is no self-service path):
 
 ```bash
 DATABASE_URL=... node scripts/create-staff.mjs ops.yourname "Your Name"
+
+# Change an existing staff account's username or password. The password
+# comes in on stdin so it stays out of shell history and the process
+# list, and the row is updated rather than replaced -- staff_audit
+# references it ON DELETE SET NULL, so deleting an account to re-make it
+# would unattribute everything it had ever done.
+printf %s 'the-new-password'   | node --env-file=.env scripts/staff-credentials.mjs ops.yourname --username new.name
 ```
 
 The password is generated and printed once; only its hash is stored.
